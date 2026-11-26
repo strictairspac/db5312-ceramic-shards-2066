@@ -9,6 +9,23 @@
 - 重分片预算
 - 搬迁清单
 
+## 档案迁库接口
+
+指定档案按盘点编号（`payload.snapshot_id`）从原库 `old` 迁到新库 `new`，主键与试算/报告编号保持不变。迁库期间试算、复核照常写入；迁库单持久化、可续跑，按单号幂等，行级 upsert 保证重试不产生重复记录。目标库逐行核对（行数与规范化内容）一致后才切换该档案的归属和全局接单库；切换前已 `claim` 的试算即使晚交报告，也会按档案归属写入新库（必要时先回补最新的 `attempt_token`）。按档案查询试算和报告只访问其当前归属的同一座库。
+
+| 动作 | 接口 |
+| --- | --- |
+| 发起迁库（同步跑到完成） | `POST /migrations`（同义：`/migrate`、`/cases/migrate`、`/archives/{id}/migrate`、`/snapshots/{snapshot_id}/migrate`） |
+| 迁库单列表 / 详情 | `GET /migrations`、`GET /migrations/{单号或id}` |
+| 续跑 / 重试 / 核对 / 切换 | `POST /migrations/{id}/run`（`resume`/`retry`）、`/sync`、`/verify`、`/switch` |
+| 查询当前由哪座库接单 | `GET /database`（同义：`/active-database`、`/databases/active`、`/routing`、`/cases/{id}/database`，可用 `?case_id=`/`?snapshot_id=` 查单档案归属） |
+| 按档案查试算 | `GET /cases/{id}/runs`（也支持 `GET /runs?case_id=`、`/archives/{id}/runs`） |
+| 按档案查报告/复核 | `GET /cases/{id}/evidence`（也支持 `GET /evidence?case_id=`、`/archives/{id}/reports`） |
+
+发起 body 兼容 `{"snapshot_id":"..."}`、`{"snapshot_ids":[...]}`、`{"case_ids":[...]}`、裸数组、中文键 `盘点编号`，并可用 `order_no`/`idempotency_key` 字段或 `Idempotency-Key` 请求头指定同一单。响应同时给出 `active_database`、`current_database`、`writer`、`active_db` 等同义字段。
+
+本地/测试默认使用两个独立的 SQLite 内存库，无需 MySQL/Redis；也可用 `NEW_DB_URL` 或 `NEW_DB_NAME` 配置目标库。compose 会自动创建 MySQL 目标库 `workflow_new`。
+
 ## 本地运行
 
 ```sh

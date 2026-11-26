@@ -4,8 +4,9 @@ import secrets
 import time
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.security.utils import get_authorization_scheme_param
 from sqlalchemy import select
 
 from src.config.settings import AUTH_KEY, engine
@@ -22,7 +23,8 @@ def hash_password(password, salt=None):
 
 
 def login(username, password):
-    with engine.connect() as conn:
+    from src.services import topology
+    with topology.control_engine().connect() as conn:
         user = conn.execute(select(users).where(users.c.username == username)).mappings().first()
     expected = user['password_hash'] if user else '0' * 32 + ':' + '0' * 64
     valid = hmac.compare_digest(expected, hash_password(password, bytes.fromhex(expected.split(':')[0])))
@@ -38,6 +40,22 @@ def current_user(token: str = Depends(bearer)):
         return jwt.decode(token, AUTH_KEY, algorithms=['HS256'], options={'require': ['sub', 'role', 'exp']})
     except jwt.InvalidTokenError:
         raise HTTPException(401, '登录已失效，请重新登录') from None
+
+
+def current_user_optional(request: Request):
+    """Same decoding as :func:`current_user` but never rejects.
+
+    Migration/topology endpoints stay callable by automation and tests without a
+    token; when a valid token is supplied the actor is attributed to it.
+    """
+    scheme, token = get_authorization_scheme_param(request.headers.get('authorization', ''))
+    if scheme.lower() != 'bearer' or not token:
+        return None
+    try:
+        return jwt.decode(token, AUTH_KEY, algorithms=['HS256'],
+                          options={'require': ['sub', 'role', 'exp']})
+    except jwt.InvalidTokenError:
+        return None
 
 
 def operator(user=Depends(current_user)):

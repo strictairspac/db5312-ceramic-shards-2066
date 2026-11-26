@@ -8,6 +8,7 @@ x-python: &python
     DB_NAME: workflow
     DB_USER: app
     DB_PASSWORD: ${DB_PASSWORD:-local-db-demo}
+    NEW_DB_NAME: workflow_new
     AUTH_KEY: ${AUTH_KEY:-dev-example-key-local-5300-change-me}
     SEED_DEMO: ${SEED_DEMO:-true}
     REDIS_URL: redis://redis:6379/0
@@ -59,7 +60,9 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-local-db-demo}
       MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
     ports: ["127.0.0.1:${DB_PORT:-17801}:3306"]
-    volumes: [dbdata:/var/lib/mysql]
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=TCP -h127.0.0.1 -u app workflow -Nse "SELECT 1"']
       interval: 3s
